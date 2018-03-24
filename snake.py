@@ -4,6 +4,11 @@ from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 x = 20
 y = 60
 
+def outOfBounds(coords, walls):
+    if coords[0] < 1 or coords[0] > walls[0]-2 or coords[1] < 1 or coords[1] > walls[1]-2:
+        return True
+    return False
+
 class Dirs:
     UP = 'up'
     DOWN = 'down'
@@ -34,14 +39,37 @@ class FeatureExtractor:
 	nextx = state.snake[0][0] + (action == Dirs.UP and -1) + (action == Dirs.DOWN and 1)
 	head = [nextx, nexty]
 
-	features["barrier-1-away"] = head in state.snake[1:] or head[0] == 0 or head[0] == state.walls[0]-1 or head[1] == 0 or head[1] == state.walls[1]-1
+	features["barrier-1-away"] = head in state.snake[1:] or outOfBounds(head, state.walls)
 	
 	features["dist-to-food"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
 
+        head_t = (head[0], head[1])
+        visited_coords = set(head_t)
+	queue = [head_t]
+	remaining_nodes = 500
+	for i in range(0,500):
+	    if queue:
+	        coord = queue.pop(0)
+            else:
+	        remaining_nodes = i
+		break
+	    for neighbor in self.getNeighbors(coord):
+	        if neighbor not in visited_coords and outOfBounds(neighbor, state.walls) == False and [neighbor[0],neighbor[1]] not in state.snake:
+		    queue.append(neighbor)
+		    visited_coords.add(neighbor)
+		    #win.addstr(neighbor[0], neighbor[1], '.')
+
+        features["trapped"] = remaining_nodes/float(500)
+
+	features["head-equals-tail"] = head[0] == state.snake[-1][0] and head[1] == state.snake[-1][1]
+
 	return features
 
+    def getNeighbors(self, coords):
+        return [(coords[0]-1, coords[1]), (coords[0]+1, coords[1]), (coords[0], coords[1]-1), (coords[0], coords[1]+1)]
+
 class LearningAgent:
-    def __init__(self, eps = 0.0, alp = 0.5, disc = 0.9):
+    def __init__(self, eps = 0.0, alp = 0.5, disc = 0.99):
         self.weights = Counter()
 	self.featExtractor = FeatureExtractor()
 	self.epsilon = eps
@@ -117,7 +145,7 @@ class GameState:
     def __init__(self, prevState = None):
         if prevState == None:
             self.snake = [[1, 1]]
-    	    self.food = [2, 1]
+    	    self.food = [x/2, y/2]
 	    self.walls = [x, y]
 	    self.dir = Dirs.RIGHT
 	    self.score = 0
@@ -151,38 +179,44 @@ class GameState:
         #eat food if needed
 	if state.snake[0] == state.food:
 	    state.food = []
-	    state.score += 1
+	    state.score += 100
 	    while state.food == []:
 	        state.food = [random.randint(1, state.walls[0]-2), random.randint(1, state.walls[1]-2)]
 		if state.food in state.snake: 
 		    state.food = []
 	else:
 	    state.snake.pop()
+	    state.score -= 1
 
 	if state.isLoss():
-	    state.score -= 500
+	    state.score -= 10000
 
 	return state
 
     def isLoss(self):
-        if self.snake[0][0] == 0 or self.snake[0][0] == self.walls[0]-1 or self.snake[0][1] == 0 or self.snake[0][1] == self.walls[1]-1 or self.snake[0] in self.snake[1:]:
+        if outOfBounds(self.snake[0], self.walls) or self.snake[0] in self.snake[1:]:
 	    return True
 	return False
 
 def main():
-    frameLen = 20
+    frameLen = 1
 
     #init values
     win.timeout(frameLen)
-    i = 0
+    i = -1
     loop = 0
     maxscore = 0
-    agent = LearningAgent()
+    maxtotal = 0
+    agent = LearningAgent(1, 1, 0.99)
 
     #while esc not pressed, run game
     while loop != 27:
         state = GameState()
 	nextState = state.generateSuccessor(Dirs.RIGHT)
+	i += 1
+	maxtotal += maxscore
+	agent.epsilon = max(0, agent.epsilon - 0.01)
+	agent.alpha = max(0, agent.alpha - 0.005)
 
 	while loop != 27:
 	    action = agent.getAction(state)
@@ -192,8 +226,8 @@ def main():
 	    maxscore = max(maxscore, state.score)
 
             win.border(0)
-            #win.addstr(0, 0, str(maxscore) + ', ' + str(state.score) + '   ')
-	    win.addstr(0, 0, str(int(agent.getQValue(state, action))) + '   ')
+            win.addstr(0, 0, 'Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + '     ')
+	    #win.addstr(0, 0, str(int(agent.getQValue(state, action))) + '   ')
 
             #generate successor state
             event = win.getch()
