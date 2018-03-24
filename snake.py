@@ -1,8 +1,8 @@
 import curses, copy, sys, random
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
-x = 10
-y = 10
+x = 20
+y = 60
 
 class Dirs:
     UP = 'up'
@@ -30,8 +30,8 @@ class FeatureExtractor:
     def getFeatures(self, state, action):
         features = Counter()
 
-	nexty = state.snake[0][1] + (state.dir == Dirs.LEFT and -1) + (state.dir == Dirs.RIGHT and 1)
-	nextx = state.snake[0][0] + (state.dir == Dirs.UP and -1) + (state.dir == Dirs.DOWN and 1)
+	nexty = state.snake[0][1] + (action == Dirs.LEFT and -1) + (action == Dirs.RIGHT and 1)
+	nextx = state.snake[0][0] + (action == Dirs.UP and -1) + (action == Dirs.DOWN and 1)
 	head = [nextx, nexty]
 
 	features["barrier-1-away"] = head in state.snake[1:] or head[0] == 0 or head[0] == state.walls[0]-1 or head[1] == 0 or head[1] == state.walls[1]-1
@@ -66,14 +66,15 @@ class LearningAgent:
 
         maxval = -sys.maxsize - 1
 	actions = state.getLegalActions()
-        argmax = Dirs.DOWN
+        argmax = Dirs.RIGHT
 
-	#for action in actions:
-	#    qval = self.getQValue(state, action)
-	#    if qval > maxval:
-	#        argamx = action
-	#	maxval = qval
+	for action in actions:
+	    qval = self.getQValue(state, action)
+	    if qval > maxval:
+	        argmax = action
+		maxval = qval
 	
+	#print self.getQValue(state, Dirs.DOWN), self.getQValue(state, Dirs.RIGHT), argmax, maxval
 	return argmax
 
     def getAction(self, state):
@@ -169,7 +170,7 @@ class GameState:
 	return False
 
 def main():
-    frameLen = 500
+    frameLen = 20
 
     #init values
     win.timeout(frameLen)
