@@ -1,0 +1,7 @@
+Iter: 0		Length: 44		Score: -2490
+Iter: 1		Length: 239		Score: 257027
+Iter: 2		Length: 225		Score: 227249
+Iter: 3		Length: 367		Score: 626862
+Iter: 4		Length: 258		Score: 302244
+Iter: 5		Length: 328		Score: 497936
+Iter: 6		Length: 78		Score: 26391

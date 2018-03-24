@@ -1,8 +1,8 @@
 import curses, copy, sys, random
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
-x = 20
-y = 60
+x = 50
+y = 100
 
 def outOfBounds(coords, walls):
     if coords[0] < 1 or coords[0] > walls[0]-2 or coords[1] < 1 or coords[1] > walls[1]-2:
@@ -43,25 +43,56 @@ class FeatureExtractor:
 	
 	features["dist-to-food"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
 
-        head_t = (head[0], head[1])
-        visited_coords = set(head_t)
-	queue = [head_t]
-	remaining_nodes = 500
-	for i in range(0,500):
-	    if queue:
-	        coord = queue.pop(0)
-            else:
-	        remaining_nodes = i
-		break
-	    for neighbor in self.getNeighbors(coord):
-	        if neighbor not in visited_coords and outOfBounds(neighbor, state.walls) == False and [neighbor[0],neighbor[1]] not in state.snake:
-		    queue.append(neighbor)
-		    visited_coords.add(neighbor)
-		    #win.addstr(neighbor[0], neighbor[1], '.')
+	remaining_nodes = 200
+        if head in state.snake:
+	    remaining_nodes = 200/float(20)
+	else:
+            head_t = (head[0], head[1])
+            visited_coords = set(head_t)
+	    queue = [head_t]
+	    for i in range(0,200):
+	        if queue:
+	            coord = queue.pop(0)
+                else:
+	            remaining_nodes = i/float(20)
+		    break
+	        for neighbor in self.getNeighbors(coord):
+	            if neighbor not in visited_coords and outOfBounds(neighbor, state.walls) == False and [neighbor[0],neighbor[1]] not in state.snake:
+		        queue.append(neighbor)
+		        visited_coords.add(neighbor)
+		        win.addstr(neighbor[0], neighbor[1], '.')
 
-        features["trapped"] = remaining_nodes/float(500)
+        features["trapped"] = (200 - remaining_nodes)/float(200)
 
 	features["head-equals-tail"] = head[0] == state.snake[-1][0] and head[1] == state.snake[-1][1]
+
+        xcount = 0
+	ycount = 0
+	for i in range(0, len(state.snake)-1):
+	    coord = state.snake[i]
+	    nextcoord = state.snake[i+1]
+	    if coord[0] == nextcoord[0]:
+	        xcount += 1
+	    else:
+	        xcount = 0
+	    if coord[1] == nextcoord[1]:
+	        ycount += 1
+	    else:
+	        ycount = 0
+
+	features["spans-board"] = ycount >= y or xcount >= x
+
+        min_x = x
+	max_x = 0
+	min_y = y
+	max_y = 0
+	for coord in state.snake:
+	    min_x = min(min_x, coord[0])
+	    max_x = max(max_x, coord[0])
+	    min_y = min(min_y, coord[1])
+	    max_y = max(max_y, coord[1])
+
+	features["perimiter"] = (2 * (max_x - min_x) + 2 * (max_y - min_y)) / float(2 * x + 2 * y)
 
 	return features
 
@@ -179,7 +210,7 @@ class GameState:
         #eat food if needed
 	if state.snake[0] == state.food:
 	    state.food = []
-	    state.score += 100
+	    state.score += 10 * len(self.snake)
 	    while state.food == []:
 	        state.food = [random.randint(1, state.walls[0]-2), random.randint(1, state.walls[1]-2)]
 		if state.food in state.snake: 
@@ -207,7 +238,8 @@ def main():
     loop = 0
     maxscore = 0
     maxtotal = 0
-    agent = LearningAgent(1, 1, 0.99)
+    agent = LearningAgent()
+    file = open("output.txt", "w+")
 
     #while esc not pressed, run game
     while loop != 27:
@@ -215,8 +247,6 @@ def main():
 	nextState = state.generateSuccessor(Dirs.RIGHT)
 	i += 1
 	maxtotal += maxscore
-	agent.epsilon = max(0, agent.epsilon - 0.01)
-	agent.alpha = max(0, agent.alpha - 0.005)
 
 	while loop != 27:
 	    action = agent.getAction(state)
@@ -226,7 +256,7 @@ def main():
 	    maxscore = max(maxscore, state.score)
 
             win.border(0)
-            win.addstr(0, 0, 'Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + '     ')
+            win.addstr(0, 0, 'Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + ', QValue: ' + str(int(agent.getQValue(state, action))) + '     ')
 	    #win.addstr(0, 0, str(int(agent.getQValue(state, action))) + '   ')
 
             #generate successor state
@@ -248,6 +278,10 @@ def main():
 
 	    if state.isLoss():
 	        break
+	
+	file.write("Iter: " + str(i) + "\t\tLength: " + str(len(state.snake)) + "\t\tScore: " + str(state.score) + "\r\n")
+
+    file.close
 
     #terminate app
     #curses.echo()
