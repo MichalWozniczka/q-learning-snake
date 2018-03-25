@@ -1,8 +1,8 @@
 import curses, copy, sys, random, math
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
-x = 50
-y = 100
+x = 20
+y = 40
 
 def outOfBounds(coords, walls):
     if coords[0] < 1 or coords[0] > walls[0]-2 or coords[1] < 1 or coords[1] > walls[1]-2:
@@ -39,15 +39,46 @@ class FeatureExtractor:
 	nextx = state.snake[0][0] + (action == Dirs.UP and -1) + (action == Dirs.DOWN and 1)
 	head = [nextx, nexty]
 
-	features["barrier-1-away"] = head in state.snake[1:] or outOfBounds(head, state.walls)
+	features["touching-barrier"] = head in state.snake[1:] or outOfBounds(head, state.walls)
 	
 	features["dist-to-food-manhattan"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
+
+        #determines if there's a section of snake that's next to a wall
+        nextToWall = False
+	for segment in state.snake:
+	    if segment[0] == 1 or segment[0] == state.walls[0]-1 or segment[1] == 1 or segment[1] == state.walls[1]-1:
+	        nextToWall = True
+	    
+	features["next-to-wall"] = nextToWall
+
+        #determines if there is a segment of snake that spans the entire board in the x or y direction
+	spansBoard = True
+	for i in range(1, x-1):
+	    spansBoard = True
+	    for j in range(1, y-1):
+	        if state.board[i][j] != True:
+		    spansBoard = False
+	    if spansBoard:
+	        break
+
+	for j in range(1, y-1):
+	    spansBoard = True
+	    for i in range(1, x-1):
+	        if state.board[i][j] != True:
+		    spansBoard = False
+	    if spansBoard:
+	        break
+
+	features["spans-board"] = spansBoard
+
+	#features["snake-len"] = len(state.snake) / float(state.walls[0] * state.walls[1])
 
 	#features["dist-to-tail-manhattan"] = (abs(head[0] - state.snake[-1][0]) + abs(head[1] - state.snake[-1][1])) / float(max(state.walls))
 
 	#features["dist-to-food-euclidian"] = math.sqrt(pow(abs(head[0] - state.food[0]), 2) + pow(abs(head[1] - state.food[1]), 2)) / float(max(state.walls))
 
-        search_size = min(pow(len(state.snake)/4, 2), 200)
+        #performs BFS of 'search_size' # of positions to see if head is surrounded by walls
+        search_size = min(pow(len(state.snake)/4, 2), 200, state.walls[0] * state.walls[1] - len(state.snake))
 	remaining_nodes = search_size
         if head in state.snake:
 	    remaining_nodes = search_size/float(max(search_size/10, 1))
@@ -71,6 +102,7 @@ class FeatureExtractor:
 
 	return features
 
+    #returns list of all positions directly adjacent to coords
     def getNeighbors(self, coords):
         return [(coords[0]-1, coords[1]), (coords[0]+1, coords[1]), (coords[0], coords[1]-1), (coords[0], coords[1]+1)]
 
@@ -85,6 +117,7 @@ class LearningAgent:
     def getQValue(self, state, action):
         return self.featExtractor.getFeatures(state, action) * self.weights
 
+    #returns maximum q-value
     def computeValueFromQValues(self, state):
         if state.isLoss():
 	    return 0
@@ -94,6 +127,9 @@ class LearningAgent:
 	for action in actions:
 	    maxval = max(maxval, self.getQValue(state, action))
 
+	return maxval
+
+    #selects action with maximum q-value
     def computeActionFromQValues(self, state):
         if state.isLoss():
 	    return 0
@@ -108,9 +144,9 @@ class LearningAgent:
 	        argmax = action
 		maxval = qval
 	
-	#print self.getQValue(state, Dirs.DOWN), self.getQValue(state, Dirs.RIGHT), argmax, maxval
 	return argmax
 
+    #selects random action with epsilon probability, otherwise selects optimal action
     def getAction(self, state):
         if state.isLoss():
 	    return Dirs.RIGHT
@@ -124,6 +160,7 @@ class LearningAgent:
 
         return action
 
+    #update features based on reward
     def update(self, state, action, nextState, reward):
         maxval = -sys.maxsize - 1
 	nextActions = state.getLegalActions()
@@ -155,12 +192,14 @@ class GameState:
 	    self.walls = [x, y]
 	    self.dir = Dirs.RIGHT
 	    self.score = 0
+	    self.board = [[False for a in range(0, y)] for b in range(0, x)]
 	else:
 	    self.snake = copy.deepcopy(prevState.snake)
 	    self.food = copy.deepcopy(prevState.food)
 	    self.walls = copy.deepcopy(prevState.walls)
 	    self.dir = prevState.dir
 	    self.score = prevState.score
+	    self.board = copy.deepcopy(prevState.board)
 
     def getLegalActions(self):
         if self.isLoss(): return []
@@ -181,6 +220,7 @@ class GameState:
         #find pos of new head
         state.dir = action
         state.snake.insert(0, [state.snake[0][0] + (state.dir == Dirs.DOWN and 1) + (state.dir == Dirs.UP and -1), state.snake[0][1] + (state.dir == Dirs.LEFT and -1) + (state.dir == Dirs.RIGHT and 1)])
+	state.board[state.snake[0][0]][state.snake[0][1]] = True
 
         #eat food if needed
 	if state.snake[0] == state.food:
@@ -191,7 +231,8 @@ class GameState:
 		if state.food in state.snake: 
 		    state.food = []
 	else:
-	    state.snake.pop()
+	    oldpos = state.snake.pop()
+	    state.board[oldpos[0]][oldpos[1]] = False
 	    state.score -= 1
 
 	if state.isLoss():
@@ -200,7 +241,7 @@ class GameState:
 	return state
 
     def isLoss(self):
-        if outOfBounds(self.snake[0], self.walls) or self.snake[0] in self.snake[1:]:
+        if self.score < -500 or outOfBounds(self.snake[0], self.walls) or self.snake[0] in self.snake[1:]:
 	    return True
 	return False
 
@@ -209,32 +250,45 @@ def main():
 
     #init values
     win.timeout(frameLen)
-    i = -1
+    i = 0
     loop = 0
     maxscore = 0
-    maxtotal = 0
+    total = 0
     maxlength = 0
-    agent = LearningAgent(0.05, 0.5, 0.99)
-    file = open("output.txt", "w+")
+    agent = LearningAgent(0.0, 0.5, 0.99)
+    lengths = []
 
     #while esc not pressed, run game
     while loop != 27:
         state = GameState()
 	nextState = state.generateSuccessor(Dirs.RIGHT)
-	i += 1
-	maxtotal += maxscore
 
+        #one full game of snake
 	while loop != 27:
+	    #get optimal action, generate successor state, and update features with the reward
 	    action = agent.getAction(state)
 	    nextState = state.generateSuccessor(action)
 	    agent.update(state, action, nextState, nextState.score - state.score)
 	    state = GameState(nextState)
+
 	    maxscore = max(maxscore, state.score)
 	    maxlength = max(maxlength, len(state.snake))
 
+            #print info
             win.border(0)
-            win.addstr(0, 0, 'Length: ' + str(len(state.snake)) + ', Max Length: ' + str(maxlength) + ', Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + ', QValue: ' + str(int(agent.getQValue(state, action))) + '     ')
-	    #win.addstr(0, 0, str(int(agent.getQValue(state, action))) + '   ')
+	    for a in range(1, y-1):
+	        win.addstr(x, a, '_')
+		win.addstr(x+11, a, '_')
+	    win.addstr(x+1, 1, 'Length:\t' + str(len(state.snake)) + '     ')
+	    win.addstr(x+2, 1, 'Max Length:\t' + str(maxlength) + '     ')
+	    win.addstr(x+3, 1, 'Score:\t\t' + str(state.score) + '     ')
+	    win.addstr(x+4, 1, 'Max Score:\t' + str(maxscore) + '     ')
+	    win.addstr(x+5, 1, 'Average Score:\t' + str(total/max(i, 1)) + '     ')
+	    win.addstr(x+6, 1, 'Iteration:\t' + str(i+1) + '     ')
+	    win.addstr(x+7, 1, 'QValue:\t' + str(int(agent.getQValue(state, action))) + '     ')
+	    win.addstr(x+8, 1, 'Epsilon:\t' + str(agent.epsilon) + '       ')
+	    win.addstr(x+9, 1, 'Learning Rate:\t' + str(agent.alpha) + '       ')
+	    win.addstr(x+10, 1, 'Discount:\t' + str(agent.discount) + '       ')
 
             #generate successor state
             event = win.getch()
@@ -244,8 +298,8 @@ def main():
 	        loop = event
 
             #print snake to screen
-            for a in range(1, x-1):
-	        for b in range(1, y-1):
+            for a in range(0, x):
+	        for b in range(0, y):
 	            win.addch(a, b, ' ')
 
 	    win.addch(state.food[0], state.food[1], '*')
@@ -256,23 +310,27 @@ def main():
 	    if state.isLoss():
 	        break
 	
-	file.write("Iter: " + str(i) + "\t\tLength: " + str(len(state.snake)) + "\t\tScore: " + str(state.score) + "\r\n")
-	agent.epsilon = 0.05 - 0.01 * (i / 200)
-	agent.alpha = 0.5 - 0.1 * (i / 200)
+	#agent.epsilon = max(0.05 - 0.01 * (i / 100), 0)
+	agent.alpha = max(0.5 - 0.1 * (i / 200), 0)
+	total += state.score + 10000
 
-    file.close
+	lengths.append(len(state.snake))
+	i += 1
 
-    #terminate app
-    #curses.echo()
-    #curses.nocbreak()
-    #win.keypad(0)
+	#print graph of snake lengths
+	for a in range(x+12, x+31):
+	    for b in range(0, y):
+	        win.addch(a, b, ' ')
+	if i > 0:
+	    step = i / float(y-1.999999)
+	    for j in range(1, y-1):
+		win.addstr(x+30-(lengths[int(step * j)]*18/maxlength), j, 'o')
 
 #generate app
 curses.initscr()
-win = curses.newwin(x, y, 0, 0)
+win = curses.newwin(x+32, y, 0, 0)
 curses.noecho()
 curses.curs_set(0)
-#curses.cbreak()
 win.keypad(1)
 win.nodelay(1)
 win.border(0)
