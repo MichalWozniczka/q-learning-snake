@@ -1,4 +1,4 @@
-import curses, copy, sys, random
+import curses, copy, sys, random, math
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
 x = 50
@@ -41,58 +41,33 @@ class FeatureExtractor:
 
 	features["barrier-1-away"] = head in state.snake[1:] or outOfBounds(head, state.walls)
 	
-	features["dist-to-food"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
+	features["dist-to-food-manhattan"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
 
-	remaining_nodes = 200
+	#features["dist-to-tail-manhattan"] = (abs(head[0] - state.snake[-1][0]) + abs(head[1] - state.snake[-1][1])) / float(max(state.walls))
+
+	#features["dist-to-food-euclidian"] = math.sqrt(pow(abs(head[0] - state.food[0]), 2) + pow(abs(head[1] - state.food[1]), 2)) / float(max(state.walls))
+
+        search_size = min(pow(len(state.snake)/4, 2), 200)
+	remaining_nodes = search_size
         if head in state.snake:
-	    remaining_nodes = 200/float(20)
+	    remaining_nodes = search_size/float(max(search_size/10, 1))
 	else:
             head_t = (head[0], head[1])
             visited_coords = set(head_t)
 	    queue = [head_t]
-	    for i in range(0,200):
+	    for i in range(0,search_size):
 	        if queue:
 	            coord = queue.pop(0)
                 else:
-	            remaining_nodes = i/float(20)
+	            remaining_nodes = i/float(max(search_size/10, 1))
 		    break
 	        for neighbor in self.getNeighbors(coord):
 	            if neighbor not in visited_coords and outOfBounds(neighbor, state.walls) == False and [neighbor[0],neighbor[1]] not in state.snake:
 		        queue.append(neighbor)
 		        visited_coords.add(neighbor)
-		        win.addstr(neighbor[0], neighbor[1], '.')
+		        #win.addstr(neighbor[0], neighbor[1], '.')
 
-        features["trapped"] = (200 - remaining_nodes)/float(200)
-
-	features["head-equals-tail"] = head[0] == state.snake[-1][0] and head[1] == state.snake[-1][1]
-
-        xcount = 0
-	ycount = 0
-	for i in range(0, len(state.snake)-1):
-	    coord = state.snake[i]
-	    nextcoord = state.snake[i+1]
-	    if coord[0] == nextcoord[0]:
-	        xcount += 1
-	    else:
-	        xcount = 0
-	    if coord[1] == nextcoord[1]:
-	        ycount += 1
-	    else:
-	        ycount = 0
-
-	features["spans-board"] = ycount >= y or xcount >= x
-
-        min_x = x
-	max_x = 0
-	min_y = y
-	max_y = 0
-	for coord in state.snake:
-	    min_x = min(min_x, coord[0])
-	    max_x = max(max_x, coord[0])
-	    min_y = min(min_y, coord[1])
-	    max_y = max(max_y, coord[1])
-
-	features["perimiter"] = (2 * (max_x - min_x) + 2 * (max_y - min_y)) / float(2 * x + 2 * y)
+        features["trapped"] = (search_size - remaining_nodes)/float(max(search_size, 1))
 
 	return features
 
@@ -100,7 +75,7 @@ class FeatureExtractor:
         return [(coords[0]-1, coords[1]), (coords[0]+1, coords[1]), (coords[0], coords[1]-1), (coords[0], coords[1]+1)]
 
 class LearningAgent:
-    def __init__(self, eps = 0.0, alp = 0.5, disc = 0.99):
+    def __init__(self, eps = 0.05, alp = 0.5, disc = 0.99):
         self.weights = Counter()
 	self.featExtractor = FeatureExtractor()
 	self.epsilon = eps
@@ -210,7 +185,7 @@ class GameState:
         #eat food if needed
 	if state.snake[0] == state.food:
 	    state.food = []
-	    state.score += 10 * len(self.snake)
+	    state.score += 100
 	    while state.food == []:
 	        state.food = [random.randint(1, state.walls[0]-2), random.randint(1, state.walls[1]-2)]
 		if state.food in state.snake: 
@@ -238,7 +213,8 @@ def main():
     loop = 0
     maxscore = 0
     maxtotal = 0
-    agent = LearningAgent()
+    maxlength = 0
+    agent = LearningAgent(0.05, 0.5, 0.99)
     file = open("output.txt", "w+")
 
     #while esc not pressed, run game
@@ -254,9 +230,10 @@ def main():
 	    agent.update(state, action, nextState, nextState.score - state.score)
 	    state = GameState(nextState)
 	    maxscore = max(maxscore, state.score)
+	    maxlength = max(maxlength, len(state.snake))
 
             win.border(0)
-            win.addstr(0, 0, 'Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + ', QValue: ' + str(int(agent.getQValue(state, action))) + '     ')
+            win.addstr(0, 0, 'Length: ' + str(len(state.snake)) + ', Max Length: ' + str(maxlength) + ', Max: ' + str(maxscore) + ', Average: ' + str(maxtotal/max(i, 1)) + ', # of iters: ' + str(i+1) + ', Score: ' + str(state.score) + ', QValue: ' + str(int(agent.getQValue(state, action))) + '     ')
 	    #win.addstr(0, 0, str(int(agent.getQValue(state, action))) + '   ')
 
             #generate successor state
@@ -280,6 +257,8 @@ def main():
 	        break
 	
 	file.write("Iter: " + str(i) + "\t\tLength: " + str(len(state.snake)) + "\t\tScore: " + str(state.score) + "\r\n")
+	agent.epsilon = 0.05 - 0.01 * (i / 200)
+	agent.alpha = 0.5 - 0.1 * (i / 200)
 
     file.close
 
