@@ -42,13 +42,13 @@ class FeatureExtractor:
 	nextx = state.snake[0][0] + (action == Dirs.UP and -1) + (action == Dirs.DOWN and 1)
 	head = [nextx, nexty]
 
-	features["bias--"] = 1.0
+	#features["bias--"] = 1.0
 
 	features["on-barrier"] = head in state.snake[0:-1] or outOfBounds(head, state.walls)
 
         dist = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) 
 	#features["dist-to-food"] = dist / float(max(state.walls))
-	features["dist-to-food"] = (1.0 / pow(dist, 2) if dist > 0 else 1) - 0.5
+	features["dist-to-food"] = pow(dist / float(max(state.walls)), 1)
 	#features["not-near-food"] = dist / float(max(state.walls))
 
 	#features["food-nearby"] = dist < 3
@@ -82,6 +82,18 @@ class FeatureExtractor:
 	            break
 
 	features["spans-board"] = spansBoard
+
+        min_x = state.walls[1]
+        max_x = 0
+	min_y = state.walls[0]
+	max_y = 0
+	for seg in state.snake:
+	    min_x = min(min_x, seg[1])
+	    max_x = max(max_x, seg[1])
+	    min_y = min(min_y, seg[0])
+	    max_y = max(max_y, seg[0])
+
+	features["perimiter"] = (2 * (max_x - min_x + max_y - min_y)) / float(2*(state.walls[0]+state.walls[1]))
 
 	#features["snake-len"] = len(state.snake) / float(state.walls[0] * state.walls[1])
 
@@ -292,7 +304,7 @@ class GameState:
 	return state
 
     def isLoss(self):
-        if self.score < -500 or outOfBounds(self.snake[0], self.walls) or self.snake[0] in self.snake[1:]:
+        if outOfBounds(self.snake[0], self.walls) or self.snake[0] in self.snake[1:]:
 	    return True
 	return False
 
@@ -306,7 +318,7 @@ def main():
     maxscore = 0
     total = 0
     maxlength = 0
-    agent = LearningAgent(0.00, 0.5, 0.99)
+    agent = LearningAgent(0.05, 0.1, 0.99)
     lengths = []
 
     #while esc not pressed, run game
@@ -386,7 +398,7 @@ def main():
 	        win.addch(coord[0], coord[1], 'o')
 
 	agent.epsilon = max(agent.epsilon - 0.0002, 0)
-	agent.alpha = max(agent.alpha - 0.001, 0)
+	agent.alpha = max(agent.alpha - 0.0002, 0)
 	total += state.score + 10000
 
 	lengths.append(len(state.snake))
@@ -408,7 +420,7 @@ def main():
 
         fps = 1000 / frameLen
 	if loop != 27:
-	    for t in range(0, fps*5):
+	    for t in range(0, fps*1):
 	        key = win.getch()
 	        if key == ord(' '):
 	            key = -1
