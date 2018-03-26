@@ -1,4 +1,4 @@
-import curses, copy, sys, random, math
+import curses, copy, sys, random, math, queue, time
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
 x = 20
@@ -8,6 +8,9 @@ def outOfBounds(coords, walls):
     if coords[0] < 1 or coords[0] > walls[0]-2 or coords[1] < 1 or coords[1] > walls[1]-2:
         return True
     return False
+
+def manhattanDist(coord1, coord2):
+    return abs(coord1[0] - coord2[0]) + abs(coord1[1] - coord2[1])
 
 class Dirs:
     UP = 'up'
@@ -39,73 +42,115 @@ class FeatureExtractor:
 	nextx = state.snake[0][0] + (action == Dirs.UP and -1) + (action == Dirs.DOWN and 1)
 	head = [nextx, nexty]
 
-	features["touching-barrier"] = head in state.snake[1:] or outOfBounds(head, state.walls)
-	
-	features["dist-to-food-manhattan"] = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) / float(max(state.walls))
+	features["bias--"] = 1.0
+
+	features["on-barrier"] = head in state.snake[0:-1] or outOfBounds(head, state.walls)
+
+        dist = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) 
+	#features["dist-to-food"] = dist / float(max(state.walls))
+	features["dist-to-food"] = (1.0 / pow(dist, 2) if dist > 0 else 1) - 0.5
+	#features["not-near-food"] = dist / float(max(state.walls))
+
+	#features["food-nearby"] = dist < 3
 
         #determines if there's a section of snake that's next to a wall
         nextToWall = False
 	for segment in state.snake:
-	    if segment[0] == 1 or segment[0] == state.walls[0]-1 or segment[1] == 1 or segment[1] == state.walls[1]-1:
+	    if segment[0] == 1 or segment[0] == state.walls[0]-2 or segment[1] == 1 or segment[1] == state.walls[1]-2:
 	        nextToWall = True
+		break
 	    
-	features["next-to-wall"] = nextToWall
+	#features["next-to-wall"] = nextToWall
 
         #determines if there is a segment of snake that spans the entire board in the x or y direction
 	spansBoard = True
 	for i in range(1, x-1):
 	    spansBoard = True
 	    for j in range(1, y-1):
-	        if state.board[i][j] != True:
+	        if state.board[i][j] == 0:
 		    spansBoard = False
 	    if spansBoard:
 	        break
 
-	for j in range(1, y-1):
-	    spansBoard = True
-	    for i in range(1, x-1):
-	        if state.board[i][j] != True:
-		    spansBoard = False
-	    if spansBoard:
-	        break
+        if not spansBoard:
+    	    for j in range(1, y-1):
+	        spansBoard = True
+	        for i in range(1, x-1):
+	            if state.board[i][j] == 0:
+		        spansBoard = False
+	        if spansBoard:
+	            break
 
 	features["spans-board"] = spansBoard
 
 	#features["snake-len"] = len(state.snake) / float(state.walls[0] * state.walls[1])
 
-	#features["dist-to-tail-manhattan"] = (abs(head[0] - state.snake[-1][0]) + abs(head[1] - state.snake[-1][1])) / float(max(state.walls))
 
 	#features["dist-to-food-euclidian"] = math.sqrt(pow(abs(head[0] - state.food[0]), 2) + pow(abs(head[1] - state.food[1]), 2)) / float(max(state.walls))
 
         #performs BFS of 'search_size' # of positions to see if head is surrounded by walls
-        search_size = min(pow(len(state.snake)/4, 2), 200, state.walls[0] * state.walls[1] - len(state.snake))
-	remaining_nodes = search_size
-        if head in state.snake:
-	    remaining_nodes = search_size/float(max(search_size/10, 1))
+        search_size_s = min(pow(max(len(state.snake)/4, 1), 2), 100, state.walls[0] * state.walls[1] - 4 * len(state.snake))
+        search_size_b = min(pow(max(len(state.snake)/4, 1), 2), 250, state.walls[0] * state.walls[1] - 4 * len(state.snake))
+	remaining_nodes_s = search_size_s
+	remaining_nodes_b = search_size_b
+        if head in state.snake or outOfBounds(head, state.walls):
+	    remaining_nodes_s = 0
+	    remaining_nodes_b = 0
 	else:
             head_t = (head[0], head[1])
             visited_coords = set(head_t)
-	    queue = [head_t]
-	    for i in range(0,search_size):
-	        if queue:
-	            coord = queue.pop(0)
+	    q = [head_t]
+	    for i in range(0,search_size_b):
+	        if q:
+	            coord = q.pop(0)
                 else:
-	            remaining_nodes = i/float(max(search_size/10, 1))
+		    if i < search_size_s:
+	                remaining_nodes_s = i / 2
+	            remaining_nodes_b = i / 2
 		    break
 	        for neighbor in self.getNeighbors(coord):
-	            if neighbor not in visited_coords and outOfBounds(neighbor, state.walls) == False and [neighbor[0],neighbor[1]] not in state.snake:
-		        queue.append(neighbor)
+	            if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] < manhattanDist(neighbor, head) and neighbor not in visited_coords:
+		        q.append(neighbor)
 		        visited_coords.add(neighbor)
 		        #win.addstr(neighbor[0], neighbor[1], '.')
 
-        features["trapped"] = (search_size - remaining_nodes)/float(max(search_size, 1))
+        features["trapped-s"] = 1 - (remaining_nodes_s / float(max(search_size_s, 1)))
+        features["trapped-b"] = 1 - (remaining_nodes_b / float(max(search_size_b, 1)))
+
+        '''
+	pathToCorner = False
+	#corners = [(1, 1), (1, state.walls[1]-1), (state.walls[0]-1, 1), (state.walls[0]-1, state.walls[1]-1)]
+	corners = [(x/2, y/2)]
+	if head not in state.snake:
+	    head_t = (head[0], head[1])
+	    for corner in corners:
+	        if pathToCorner:
+		    break
+	        visited_coords = set(head_t)
+		curpos = head_t
+		q = queue.PriorityQueue()
+		q.put((0, 0, curpos))
+		while curpos != corner:
+		    if q.empty():
+		        break
+		    curtup = q.get()
+		    curpos = curtup[2]
+		    if curpos == corner:
+		        pathToCorner = True
+			break
+		    for neighbor in self.getNeighbors(curpos):
+		        if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] != True and neighbor not in visited_coords:
+			    q.put((curtup[1]+1+abs(neighbor[0]-corner[0])+abs(neighbor[1]-corner[1]), curtup[1]+1, neighbor))
+			    visited_coords.add(neighbor)
+
+        features["corner"] = pathToCorner'''
 
 	return features
 
     #returns list of all positions directly adjacent to coords
     def getNeighbors(self, coords):
         return [(coords[0]-1, coords[1]), (coords[0]+1, coords[1]), (coords[0], coords[1]-1), (coords[0], coords[1]+1)]
-
+	
 class LearningAgent:
     def __init__(self, eps = 0.05, alp = 0.5, disc = 0.99):
         self.weights = Counter()
@@ -113,9 +158,11 @@ class LearningAgent:
 	self.epsilon = eps
 	self.alpha = alp
 	self.discount = disc
+	self.feats = Counter()
 
     def getQValue(self, state, action):
-        return self.featExtractor.getFeatures(state, action) * self.weights
+        self.feats = self.featExtractor.getFeatures(state, action)
+	return self.feats * self.weights
 
     #returns maximum q-value
     def computeValueFromQValues(self, state):
@@ -165,18 +212,20 @@ class LearningAgent:
         maxval = -sys.maxsize - 1
 	nextActions = state.getLegalActions()
 
-	if nextState.isLoss():
-	    maxval = 0
+	#if nextState.isLoss():
+	    #maxval = 0
 
 	for nextAction in nextActions:
 	    maxval = max(maxval, self.getQValue(nextState, nextAction))
+
+	#maxval = self.getValue(nextState)
 
 	diff = (reward + self.discount * maxval) - self.getQValue(state, action)
 
 	feats = self.featExtractor.getFeatures(state, action)
 
-	for key in feats:
-	    self.weights[key] = self.weights[key] + self.alpha * diff * feats[key]
+	for key in self.feats:
+	    self.weights[key] = self.weights[key] + self.alpha * diff * self.feats[key]
 
     def getPolicy(self, state):
         return self.computeActionFromQValues(state)
@@ -192,7 +241,8 @@ class GameState:
 	    self.walls = [x, y]
 	    self.dir = Dirs.RIGHT
 	    self.score = 0
-	    self.board = [[False for a in range(0, y)] for b in range(0, x)]
+	    self.board = [[0 for a in range(0, y)] for b in range(0, x)]
+	    self.board[1][1] = 1
 	else:
 	    self.snake = copy.deepcopy(prevState.snake)
 	    self.food = copy.deepcopy(prevState.food)
@@ -220,7 +270,7 @@ class GameState:
         #find pos of new head
         state.dir = action
         state.snake.insert(0, [state.snake[0][0] + (state.dir == Dirs.DOWN and 1) + (state.dir == Dirs.UP and -1), state.snake[0][1] + (state.dir == Dirs.LEFT and -1) + (state.dir == Dirs.RIGHT and 1)])
-	state.board[state.snake[0][0]][state.snake[0][1]] = True
+	state.board[state.snake[0][0]][state.snake[0][1]] = len(state.snake)
 
         #eat food if needed
 	if state.snake[0] == state.food:
@@ -231,12 +281,13 @@ class GameState:
 		if state.food in state.snake: 
 		    state.food = []
 	else:
+	    for coord in state.snake:
+	        state.board[coord[0]][coord[1]] -= 1
 	    oldpos = state.snake.pop()
-	    state.board[oldpos[0]][oldpos[1]] = False
 	    state.score -= 1
 
 	if state.isLoss():
-	    state.score -= 10000
+	    state.score -= 500
 
 	return state
 
@@ -255,7 +306,7 @@ def main():
     maxscore = 0
     total = 0
     maxlength = 0
-    agent = LearningAgent(0.0, 0.5, 0.99)
+    agent = LearningAgent(0.00, 0.5, 0.99)
     lengths = []
 
     #while esc not pressed, run game
@@ -269,6 +320,8 @@ def main():
 	    action = agent.getAction(state)
 	    nextState = state.generateSuccessor(action)
 	    agent.update(state, action, nextState, nextState.score - state.score)
+	    feats = agent.feats
+	    prevState = GameState(state)
 	    state = GameState(nextState)
 
 	    maxscore = max(maxscore, state.score)
@@ -279,6 +332,7 @@ def main():
 	    for a in range(1, y-1):
 	        win.addstr(x, a, '_')
 		win.addstr(x+11, a, '_')
+		win.addstr(x+32, a, '_')
 	    win.addstr(x+1, 1, 'Length:\t' + str(len(state.snake)) + '     ')
 	    win.addstr(x+2, 1, 'Max Length:\t' + str(maxlength) + '     ')
 	    win.addstr(x+3, 1, 'Score:\t\t' + str(state.score) + '     ')
@@ -289,6 +343,11 @@ def main():
 	    win.addstr(x+8, 1, 'Epsilon:\t' + str(agent.epsilon) + '       ')
 	    win.addstr(x+9, 1, 'Learning Rate:\t' + str(agent.alpha) + '       ')
 	    win.addstr(x+10, 1, 'Discount:\t' + str(agent.discount) + '       ')
+	    win.addstr(x+33, 1, 'Feature name\tValue\tWeight')
+	    ofs = 34
+	    for key in feats:
+	        win.addstr(x+ofs, 1, key + ':\t' + str(round(feats[key], 4)) + "\t" + str(round(agent.weights[key], 4)))
+		ofs += 1
 
             #generate successor state
             event = win.getch()
@@ -297,21 +356,37 @@ def main():
 	    else:
 	        loop = event
 
-            #print snake to screen
-            for a in range(0, x):
-	        for b in range(0, y):
-	            win.addch(a, b, ' ')
-
-	    win.addch(state.food[0], state.food[1], '*')
-
-	    for coord in state.snake:
-	        win.addch(coord[0], coord[1], 'o')
+            #if feats["trapped-b"] > 0:
+	        #loop = ord(' ')
+	    if loop == ord(' '):
+	        loop = -1
+		nxt = False
+		while loop != ord(' '):
+		    loop = win.getch()
+		    if loop == ord('n'):
+		        loop = ord(' ')
+			nxt = True
+			break
+		if not nxt:
+		    loop = -1
 
 	    if state.isLoss():
 	        break
-	
-	#agent.epsilon = max(0.05 - 0.01 * (i / 100), 0)
-	agent.alpha = max(0.5 - 0.1 * (i / 200), 0)
+
+            #print snake to screen
+            for b in range(0, y):
+	        for a in range(0, x+11):
+	            win.addch(a, b, ' ')
+		for a in range(x+34, x+40):
+		    win.addch(a, b, ' ')
+
+	    win.addch(state.food[0], state.food[1], '*')
+
+	    for idx, coord in enumerate(state.snake):
+	        win.addch(coord[0], coord[1], 'o')
+
+	agent.epsilon = max(agent.epsilon - 0.0002, 0)
+	agent.alpha = max(agent.alpha - 0.001, 0)
 	total += state.score + 10000
 
 	lengths.append(len(state.snake))
@@ -326,9 +401,23 @@ def main():
 	    for j in range(1, y-1):
 		win.addstr(x+30-(lengths[int(step * j)]*18/maxlength), j, 'o')
 
+	'''ofs = 34
+	for key in feats:
+	    win.addstr(x+ofs, 1, key + ':\t' + str(round(feats[key], 4)) + "\t" + str(round(agent.weights[key], 4)))
+	    ofs += 1'''
+
+        fps = 1000 / frameLen
+	if loop != 27:
+	    for t in range(0, fps*5):
+	        key = win.getch()
+	        if key == ord(' '):
+	            key = -1
+		    while key != ord(' '):
+		        key = win.getch()
+
 #generate app
 curses.initscr()
-win = curses.newwin(x+32, y, 0, 0)
+win = curses.newwin(x+41, y, 0, 0)
 curses.noecho()
 curses.curs_set(0)
 win.keypad(1)
