@@ -1,4 +1,4 @@
-import curses, copy, sys, random, math, queue, time
+import curses, copy, sys, random, math, queue, time, collections
 from curses import KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
 
 x = 20
@@ -48,7 +48,9 @@ class FeatureExtractor:
 
         dist = (abs(head[0] - state.food[0]) + abs(head[1] - state.food[1])) 
 	#features["dist-to-food"] = dist / float(max(state.walls))
-	features["dist-to-food"] = pow(dist / float(max(state.walls)), 1)
+	scaledDist = dist / float(state.walls[0] + state.walls[1])
+	#features["dist-to-food"] = math.log(scaledDist) / math.log(2)
+	features["dist-to-food"] = pow(scaledDist, 0.5)
 	#features["not-near-food"] = dist / float(max(state.walls))
 
 	#features["food-nearby"] = dist < 3
@@ -60,7 +62,7 @@ class FeatureExtractor:
 	        nextToWall = True
 		break
 	    
-	#features["next-to-wall"] = nextToWall
+	features["next-to-wall"] = nextToWall
 
         #determines if there is a segment of snake that spans the entire board in the x or y direction
 	spansBoard = True
@@ -87,13 +89,26 @@ class FeatureExtractor:
         max_x = 0
 	min_y = state.walls[0]
 	max_y = 0
-	for seg in state.snake:
+	min_x_10 = state.walls[1]
+	max_x_10 = 0
+	min_y_10 = state.walls[0]
+	max_y_10 = 0
+	for idx, seg in enumerate(state.snake):
 	    min_x = min(min_x, seg[1])
-	    max_x = max(max_x, seg[1])
+	    max_x = max(max_x, seg[1]+1)
 	    min_y = min(min_y, seg[0])
-	    max_y = max(max_y, seg[0])
+	    max_y = max(max_y, seg[0]+1)
+	    if idx < 10:
+	        min_x_10 = min_x
+		max_x_10 = max_x
+		min_y_10 = min_y
+		max_y_10 = max_y
 
 	features["perimiter"] = (2 * (max_x - min_x + max_y - min_y)) / float(2*(state.walls[0]+state.walls[1]))
+	perim10 = (2 * (max_x_10 - min_x_10 + max_y_10 - min_y_10)) / float(11)
+
+	features["s-perim-10"] = 0 if not features["spans-board"] else perim10
+
 
 	#features["snake-len"] = len(state.snake) / float(state.walls[0] * state.walls[1])
 
@@ -126,36 +141,34 @@ class FeatureExtractor:
 		        visited_coords.add(neighbor)
 		        #win.addstr(neighbor[0], neighbor[1], '.')
 
-        features["trapped-s"] = 1 - (remaining_nodes_s / float(max(search_size_s, 1)))
-        features["trapped-b"] = 1 - (remaining_nodes_b / float(max(search_size_b, 1)))
+        features["trapped"] = 1 - (remaining_nodes_b / float(max(search_size_b, 1)))
 
-        '''
-	pathToCorner = False
-	#corners = [(1, 1), (1, state.walls[1]-1), (state.walls[0]-1, 1), (state.walls[0]-1, state.walls[1]-1)]
-	corners = [(x/2, y/2)]
-	if head not in state.snake:
+	features["t-perim-10"] = 0 if features["trapped"] == 0 else perim10
+
+        foodReachable = False
+	if head not in state.snake or outOfBounds(head, state.walls):
 	    head_t = (head[0], head[1])
-	    for corner in corners:
-	        if pathToCorner:
+	    visited_coords = set(head_t)
+	    curpos = head_t
+	    q = queue.PriorityQueue()
+	    q.put((0, 0, curpos))
+	    for i in range(0, x * y / 2):
+		if q.empty():
 		    break
-	        visited_coords = set(head_t)
-		curpos = head_t
-		q = queue.PriorityQueue()
-		q.put((0, 0, curpos))
-		while curpos != corner:
-		    if q.empty():
-		        break
-		    curtup = q.get()
-		    curpos = curtup[2]
-		    if curpos == corner:
-		        pathToCorner = True
-			break
-		    for neighbor in self.getNeighbors(curpos):
-		        if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] != True and neighbor not in visited_coords:
-			    q.put((curtup[1]+1+abs(neighbor[0]-corner[0])+abs(neighbor[1]-corner[1]), curtup[1]+1, neighbor))
-			    visited_coords.add(neighbor)
+		curtup = q.get()
+		curpos = curtup[2]
+		if curpos == tuple(state.food):
+		    foodReachable = True
+		    dist = curtup[1]
+		    break
+		for neighbor in self.getNeighbors(curpos):
+		    if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] < manhattanDist(neighbor, head) and neighbor not in visited_coords:
+		        q.put((curtup[1]+1+manhattanDist(curpos, state.food), curtup[1]+1, neighbor))
+		        visited_coords.add(neighbor)
+			#win.addch(neighbor[0], neighbor[1], '.')
 
-        features["corner"] = pathToCorner'''
+        features["a-star-dist"] = (dist if foodReachable else (state.walls[0] * state.walls[1])) / float(state.walls[0] * state.walls[1])
+	#features["true-dist"] = foodReachable
 
 	return features
 
@@ -163,18 +176,20 @@ class FeatureExtractor:
     def getNeighbors(self, coords):
         return [(coords[0]-1, coords[1]), (coords[0]+1, coords[1]), (coords[0], coords[1]-1), (coords[0], coords[1]+1)]
 	
-class LearningAgent:
+class QLearningAgent:
     def __init__(self, eps = 0.05, alp = 0.5, disc = 0.99):
-        self.weights = Counter()
-	self.featExtractor = FeatureExtractor()
-	self.epsilon = eps
+        self.epsilon = eps
 	self.alpha = alp
 	self.discount = disc
-	self.feats = Counter()
+	self.qvals = Counter()
+	self.feats = None
+
+    def stateToTuple(self, state):
+        list_of_tuples = [tuple(list) for list in state.board]
+        return tuple(list_of_tuples)
 
     def getQValue(self, state, action):
-        self.feats = self.featExtractor.getFeatures(state, action)
-	return self.feats * self.weights
+        return self.qvals[(self.stateToTuple(state), action)]
 
     #returns maximum q-value
     def computeValueFromQValues(self, state):
@@ -218,6 +233,33 @@ class LearningAgent:
 	    action = self.computeActionFromQValues(state)
 
         return action
+	
+    def update(self, state, action, nextState, reward):
+        maxval = -sys.maxsize - 1
+	nextActions = nextState.getLegalActions()
+
+        maxval = self.getValue(nextState)
+
+	self.qvals[(self.stateToTuple(state), action)] = (1 - self.alpha) * self.getQValue(state, action) + self.alpha * (reward + self.discount * maxval)
+
+        return
+
+    def getPolicy(self, state):
+        return self.computeActionFromQValues(state)
+
+    def getValue(self, state):
+        return self.computeValueFromQValues(state)
+
+class ApproxQLearningAgent(QLearningAgent):
+    def __init__(self, eps = 0.05, alp = 0.5, disc = 0.99):
+        QLearningAgent.__init__(self, eps, alp, disc)
+        self.weights = Counter()
+	self.featExtractor = FeatureExtractor()
+	self.feats = Counter()
+
+    def getQValue(self, state, action):
+        self.feats = self.featExtractor.getFeatures(state, action)
+	return self.feats * self.weights
 
     #update features based on reward
     def update(self, state, action, nextState, reward):
@@ -238,12 +280,6 @@ class LearningAgent:
 
 	for key in self.feats:
 	    self.weights[key] = self.weights[key] + self.alpha * diff * self.feats[key]
-
-    def getPolicy(self, state):
-        return self.computeActionFromQValues(state)
-
-    def getValue(self, state):
-        return self.computeValueFromQValues(state)
 
 class GameState:
     def __init__(self, prevState = None):
@@ -292,6 +328,7 @@ class GameState:
 	        state.food = [random.randint(1, state.walls[0]-2), random.randint(1, state.walls[1]-2)]
 		if state.food in state.snake: 
 		    state.food = []
+	    state.board[state.food[0]][state.food[1]] = -1
 	else:
 	    for coord in state.snake:
 	        state.board[coord[0]][coord[1]] -= 1
@@ -318,7 +355,7 @@ def main():
     maxscore = 0
     total = 0
     maxlength = 0
-    agent = LearningAgent(0.05, 0.1, 0.99)
+    agent = ApproxQLearningAgent(.0, 0.1, 0.99)
     lengths = []
 
     #while esc not pressed, run game
@@ -341,10 +378,13 @@ def main():
 
             #print info
             win.border(0)
-	    for a in range(1, y-1):
+	    for a in range(1, max(y-1, 39)):
 	        win.addstr(x, a, '_')
 		win.addstr(x+11, a, '_')
 		win.addstr(x+32, a, '_')
+	    if y < 40:
+	        for a in range(1, x):
+		    win.addstr(a, y, '|')
 	    win.addstr(x+1, 1, 'Length:\t' + str(len(state.snake)) + '     ')
 	    win.addstr(x+2, 1, 'Max Length:\t' + str(maxlength) + '     ')
 	    win.addstr(x+3, 1, 'Score:\t\t' + str(state.score) + '     ')
@@ -357,9 +397,10 @@ def main():
 	    win.addstr(x+10, 1, 'Discount:\t' + str(agent.discount) + '       ')
 	    win.addstr(x+33, 1, 'Feature name\tValue\tWeight')
 	    ofs = 34
-	    for key in feats:
-	        win.addstr(x+ofs, 1, key + ':\t' + str(round(feats[key], 4)) + "\t" + str(round(agent.weights[key], 4)))
-		ofs += 1
+	    if feats:
+	        for key in feats:
+	            win.addstr(x+ofs, 1, key + ':\t' + str(round(feats[key], 4)) + "\t" + str(round(agent.weights[key], 4)))
+		    ofs += 1
 
             #generate successor state
             event = win.getch()
@@ -406,11 +447,11 @@ def main():
 
 	#print graph of snake lengths
 	for a in range(x+12, x+31):
-	    for b in range(0, y):
+	    for b in range(0, max(y, 40)):
 	        win.addch(a, b, ' ')
 	if i > 0:
-	    step = i / float(y-1.999999)
-	    for j in range(1, y-1):
+	    step = i / float(max(y, 40)-1.999999)
+	    for j in range(1, max(y, 40)-1):
 		win.addstr(x+30-(lengths[int(step * j)]*18/maxlength), j, 'o')
 
 	'''ofs = 34
@@ -420,16 +461,20 @@ def main():
 
         fps = 1000 / frameLen
 	if loop != 27:
-	    for t in range(0, fps*1):
+	    #for t in range(0, fps*0.1):
+	    for t in range(0, 0):
 	        key = win.getch()
 	        if key == ord(' '):
 	            key = -1
 		    while key != ord(' '):
 		        key = win.getch()
 
+	if agent.epsilon == 0 and agent.alpha == 0:
+	    frameLen = 5
+
 #generate app
 curses.initscr()
-win = curses.newwin(x+41, y, 0, 0)
+win = curses.newwin(x+44, max(y, 40), 0, 0)
 curses.noecho()
 curses.curs_set(0)
 win.keypad(1)
