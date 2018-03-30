@@ -95,11 +95,6 @@ def main():
 	    for idx, coord in enumerate(state.snake):
 	        win.addch(coord[0], coord[1], 'o')
 
-            '''
-	    for a in range(1, x):
-	        for b in range(0, y):
-		    win.addch(a, b, str(state.board[a][b]%10))'''
-
 	agent.epsilon = max(agent.epsilon - 0.0002, 0)
 	agent.alpha = max(agent.alpha - 0.0002, 0)
 	total += state.score + 10000
@@ -115,13 +110,8 @@ def main():
 	    step = i / float(max(y, 40)-1.999999)
 	    for j in range(1, max(y, 40)-1):
 		win.addstr(x+28-(lengths[int(step * j)]*16/maxlength), j, 'o')
-
-	'''ofs = 34
-	for key in feats:
-	    win.addstr(x+ofs, 1, key + ':\t' + str(round(feats[key], 4)) + "\t" + str(round(agent.weights[key], 4)))
-	    ofs += 1'''
-
-        fps = 1000 / frameLen
+        
+	fps = 1000 / frameLen
 	if loop != 27:
 	    #for t in range(0, fps*0.1):
 	    for t in range(0, 0):

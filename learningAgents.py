@@ -94,17 +94,9 @@ class ApproxQLearningAgent(QLearningAgent):
         maxval = -sys.maxsize - 1
 	nextActions = state.getLegalActions()
 
-	#if nextState.isLoss():
-	    #maxval = 0
-
-	#for nextAction in nextActions:
-	#    maxval = max(maxval, self.getQValue(nextState, nextAction))
-
 	maxval = self.getValue(nextState)
 
 	diff = (reward + self.discount * maxval) - self.getQValue(state, action)
-
-	#feats = self.featExtractor.getFeatures(state, action)
 
 	for key in self.feats:
 	    self.weights[key] = self.weights[key] + self.alpha * diff * self.feats[key]
