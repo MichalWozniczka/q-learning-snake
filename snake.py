@@ -12,6 +12,9 @@ def outOfBounds(coords, walls):
 def manhattanDist(coord1, coord2):
     return abs(coord1[0] - coord2[0]) + abs(coord1[1] - coord2[1])
 
+def euclidDist(coord1, coord2):
+    return math.sqrt(pow(coord1[0] - coord2[0], 2) + pow(coord1[1] - coord2[1], 2))
+
 def vectorAdd(coord1, coord2):
     return [coord1[0] + coord2[0], coord1[1] + coord2[1]]
 
@@ -122,7 +125,7 @@ class FeatureExtractor:
 	min_y = head[0]
 	max_y = head[0]+1
 	max_list = [0 for a in range(0, 12)]
-	for idx, seg in enumerate(state.snake):
+	for idx, seg in enumerate(state.snake[:-1]):
 	    min_x = min(min_x, seg[1])
 	    max_x = max(max_x, seg[1]+1)
 	    min_y = min(min_y, seg[0])
@@ -134,7 +137,7 @@ class FeatureExtractor:
 		    max_list[(i-2)*4+2] = min_y
 		    max_list[(i-2)*4+3] = max_y
 
-	#features["perimiter"] = (2 * (max_x - min_x + max_y - min_y)) / float(2*(state.walls[0]+state.walls[1]))
+	#features["perimiter"] = (max(max_x - min_x, max_y - min_y)) / float(max(state.walls))
 	perims = []
 	for i in range(0, 3):
 	    perims.insert(i, (max(max_list[i*4+1] - max_list[i*4+0], max_list[i*4+3] - max_list[i*4+2]) - (i+2)) / float(pow(i+2, 2) - (i+2)))
@@ -153,10 +156,13 @@ class FeatureExtractor:
 	#features["dist-to-food-euclidian"] = math.sqrt(pow(abs(head[0] - state.food[0]), 2) + pow(abs(head[1] - state.food[1]), 2)) / float(max(state.walls))
 
         #performs BFS of 'search_size' # of positions to see if head is surrounded by walls
+	
         search_size_s = min(pow(max(len(state.snake)/4, 1), 2), 100, state.walls[0] * state.walls[1] - 4 * len(state.snake))
         search_size_b = min(pow(max(len(state.snake)/4, 1), 2), (state.walls[0] * state.walls[1] - len(state.snake)) / 2)
 	remaining_nodes_s = search_size_s
 	remaining_nodes_b = search_size_b
+	oldest_bar = (-1, -1)
+	oldest_bar_age = len(state.snake)
         if head in state.snake or outOfBounds(head, state.walls):
 	    remaining_nodes_s = 0
 	    remaining_nodes_b = 0
@@ -173,18 +179,53 @@ class FeatureExtractor:
 	            remaining_nodes_b = i / 2
 		    break
 	        for neighbor in self.getNeighbors(coord):
+		    if state.board[neighbor[0]][neighbor[1]] > 0 and state.board[neighbor[0]][neighbor[1]] < oldest_bar_age:
+		        oldest_bar_age = state.board[neighbor[0]][neighbor[1]]
+			oldest_bar = neighbor
 	            if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] < manhattanDist(neighbor, head) and neighbor not in visited_coords:
 		        q.append(neighbor)
 		        visited_coords.add(neighbor)
 		        #win.addstr(neighbor[0], neighbor[1], '.')
+        
+        '''
+        foodReachable = False
+	if head not in state.snake and not outOfBounds(head, state.walls):
+	    head_t = (head[0], head[1])
+	    visited_coords = set(head_t)
+	    curpos = head_t
+	    q = queue.PriorityQueue()
+	    q.put((0, 0, curpos))
+	    for i in range(0, x * y / 4):
+		if q.empty():
+		    remaining_nodes = i
+		    break
+		curtup = q.get()
+		curpos = curtup[2]
+		if curpos == tuple(state.food):
+		    foodReachable = True
+		    dist = curtup[1]
+		    break
+		for neighbor in self.getNeighbors(curpos):
+		    if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] < manhattanDist(neighbor, head) and neighbor not in visited_coords:
+		        q.put((curtup[1]+1+manhattanDist(curpos, state.food), curtup[1]+1, neighbor))
+		        visited_coords.add(neighbor)
+			#win.addch(neighbor[0], neighbor[1], '.')'''
 
         features["trapped"] = (1 - (remaining_nodes_b / float(max(search_size_b, 1))))
 
-	features["t-perim-4"] = 0 if features["trapped"] == 0 else perims[0]
+        #features["a-star-dist"] = pow((dist if foodReachable else (state.walls[0] * state.walls[1])) / float(state.walls[0] * state.walls[1]), 0.33) if features["trapped"] == 0 else 0
 
-	features["t-perim-9"] = 0 if features["trapped"] == 0 else perims[1]
+        #features["trapped"] = (1 - (remaining_nodes / float(x*y/2)))
 
-	features["t-perim-16"] = 0 if features["trapped"] == 0 else perims[2]
+
+	#features["t-perim-4"] = 0 if features["trapped"] == 0 else perims[0]
+
+	#features["t-perim-9"] = 0 if features["trapped"] == 0 else perims[1]
+
+	#features["t-perim-16"] = 0 if features["trapped"] == 0 else perims[2]
+
+
+	features["dist-bar"] = 1.0 / pow(euclidDist(head, oldest_bar), 2) if features["trapped"] != 0 else 0
 
 	features["dist-to-food"] = 0 if features["trapped"] != 0 else features["dist-to-food"]
 
@@ -205,29 +246,6 @@ class FeatureExtractor:
 	    features["t-old-ngbr"] = 0'''
 
         '''
-        foodReachable = False
-	if head not in state.snake or outOfBounds(head, state.walls):
-	    head_t = (head[0], head[1])
-	    visited_coords = set(head_t)
-	    curpos = head_t
-	    q = queue.PriorityQueue()
-	    q.put((0, 0, curpos))
-	    for i in range(0, x * y / 2):
-		if q.empty():
-		    break
-		curtup = q.get()
-		curpos = curtup[2]
-		if curpos == tuple(state.food):
-		    foodReachable = True
-		    dist = curtup[1]
-		    break
-		for neighbor in self.getNeighbors(curpos):
-		    if outOfBounds(neighbor, state.walls) == False and state.board[neighbor[0]][neighbor[1]] < manhattanDist(neighbor, head) and neighbor not in visited_coords:
-		        q.put((curtup[1]+1+manhattanDist(curpos, state.food), curtup[1]+1, neighbor))
-		        visited_coords.add(neighbor)
-			#win.addch(neighbor[0], neighbor[1], '.')
-
-        features["a-star-dist"] = (dist if foodReachable else (state.walls[0] * state.walls[1])) / float(state.walls[0] * state.walls[1])
 	#features["true-dist"] = foodReachable'''
 
 
@@ -338,7 +356,7 @@ class ApproxQLearningAgent(QLearningAgent):
 
 	diff = (reward + self.discount * maxval) - self.getQValue(state, action)
 
-	feats = self.featExtractor.getFeatures(state, action)
+	#feats = self.featExtractor.getFeatures(state, action)
 
 	for key in self.feats:
 	    self.weights[key] = self.weights[key] + self.alpha * diff * self.feats[key]
