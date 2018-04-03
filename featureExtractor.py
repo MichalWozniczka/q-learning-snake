@@ -36,7 +36,7 @@ class FeatureExtractor:
 	        if q:
 	            coord = q.pop(0)
                 else:
-	            remaining_nodes = i / 2
+	            remaining_nodes = i
 		    break
 	        for neighbor in self.getNeighbors(coord):
 		    if state.board[neighbor[0]][neighbor[1]] > 0 and state.board[neighbor[0]][neighbor[1]] < oldest_bar_age:
@@ -46,11 +46,27 @@ class FeatureExtractor:
 		        q.append(neighbor)
 		        visited_coords.add(neighbor)
         
-        features["trapped"] = (1 - (remaining_nodes / float(max(search_size, 1))))
+        features["trapped"] = (1 - (remaining_nodes / 2.0 / float(max(search_size, 1)))) if remaining_nodes < search_size else 0
 
 	features["t-dist-bar"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if features["trapped"] != 0 else 0
 
 	features["dist-to-food"] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33) if features["trapped"] == 0 else 0
+
+	features["t-exp-bar"] = oldest_bar_age > remaining_nodes if features["trapped"] != 0 else 0
+
+	min_x = head[1]
+	max_x = head[1]+1
+	min_y = head[0]
+	max_y = head[0]+1
+	for seg in state.snake[0:16]:
+	    min_x = min(min_x, seg[1])
+	    max_x = max(max_x, seg[1]+1)
+	    min_y = min(min_y, seg[0])
+	    max_y = max(max_y, seg[0]+1)
+	
+	perim = ((max(max_x - min_x, max_y - min_y)) - pow(16, 0.5)) / 12.0
+
+	#features["tight-snake"] = perim * pow((len(state.snake) / float(state.walls[0] * state.walls[1])), 4)
 
 	return features
 
