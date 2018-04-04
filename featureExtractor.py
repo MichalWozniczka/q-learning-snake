@@ -22,7 +22,7 @@ class FeatureExtractor:
 	features["on-barrier"] = head in state.snake[0:-1] or util.outOfBounds(head, state.walls)
 
         #performs BFS of 'search_size' # of positions to see if head is surrounded by walls
-        search_size = min(pow(max(len(state.snake)/4, 1), 2), (state.walls[0] * state.walls[1] - len(state.snake)) / 2)
+        search_size = min(pow(max(len(state.snake)/4, 1), 2), int((state.walls[0] * state.walls[1] - len(state.snake)) * 0.75))
 	remaining_nodes = search_size
 	oldest_bar = (-1, -1)
 	oldest_bar_age = len(state.snake)
