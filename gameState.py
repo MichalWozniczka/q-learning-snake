@@ -12,7 +12,7 @@ class GameState:
 	    self.walls = [x, y]
 	    self.dir = util.Dirs.RIGHT
 	    self.score = 0
-	    self.board = [[0 for a in range(0, y)] for b in range(0, x)]
+	    self.board = [[0 for a in range(0, y+1)] for b in range(0, x+1)]
 	    self.board[1][1] = 1
 	else:
 	    self.snake = copy.deepcopy(prevState.snake)

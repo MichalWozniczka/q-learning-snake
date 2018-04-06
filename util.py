@@ -15,6 +15,9 @@ def manhattanDist(coord1, coord2):
 def euclidDist(coord1, coord2):
     return math.sqrt(pow(coord1[0] - coord2[0], 2) + pow(coord1[1] - coord2[1], 2))
 
+def sigmoid(x):
+    return 80 / (1 + math.exp(-(x-400)/100.0))
+
 def vectorAdd(coord1, coord2):
     return [coord1[0] + coord2[0], coord1[1] + coord2[1]]
 

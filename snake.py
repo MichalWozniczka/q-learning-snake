@@ -18,7 +18,7 @@ def main():
 
     #while esc not pressed, run game
     while loop != 27:
-        state = gameState.GameState()
+        state = gameState.GameState(None, x, y)
 	nextState = state.generateSuccessor(util.Dirs.RIGHT)
 
         #one full game of snake
