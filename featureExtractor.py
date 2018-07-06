@@ -48,19 +48,17 @@ class FeatureExtractor:
 
         len_bin = int(util.sigmoid(len(state.snake)))
 
-        features["trapped-" + str(len_bin)] = (1 - (remaining_nodes / 2.0 / float(max(search_size, 1)))) if remaining_nodes < search_size else 0
+        #features["trapped"] = (1 - (remaining_nodes / 2.0 / float(max(search_size, 1)))) if remaining_nodes < search_size else 0
+        trapped = remaining_nodes < search_size
 
-	features["trapped"] = features["trapped-" + str(len_bin)]
+	#features["t-old-bar"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if features["trapped"] != 0 else 0
+	features["t-old-bar"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if trapped else 0
 
-	features["t-bar-" + str(len_bin)] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if features["trapped-" + str(len_bin)] != 0 else 0
+	#features["dist-food"] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33) if features["trapped"] == 0 else 0
+	features["dist-food"] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33)
 
-	features["t-old-bar"] = features["t-bar-" + str(len_bin)]
-
-	features["dist-food-" + str(len_bin)] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33) if features["trapped-" + str(len_bin)] == 0 else 0
-
-        features["dist-food"] = features["dist-food-" + str(len_bin)]
-
-	features["t-exp-bar"] = oldest_bar_age > remaining_nodes if features["trapped-" + str(len_bin)] != 0 else 0
+	#features["t-exp-bar"] = oldest_bar_age > remaining_nodes if features["trapped"] != 0 else 0
+	features["t-exp-bar"] = oldest_bar_age > remaining_nodes if trapped else 0
 
 	return features
 
