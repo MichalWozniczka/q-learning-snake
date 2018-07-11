@@ -4,8 +4,6 @@ A reionforcement learning snake game that utilizes feature-based approximate q-l
 
 In the case of this application, the snake receives a large negative reward for "dying" (running into a wall or itself), a smaller positive reward for eating a food pellet, and a very small negative reward for simply transitioning states without dying or eating food. The snake starts with a learning rate of 0.1, and the learning rate is slowly turned down as more games are played in order to capitalize on previously learned information.
 
-GUI created with TKinter
-
 Read more about q-learning: https://en.wikipedia.org/wiki/Q-learning. 
 
 # Features
@@ -25,3 +23,8 @@ Features are defined in featureExtractor.py.
 ```
 python snake.py
 ```
+
+# Technologies
+
+Written in Python
+GUI created with TKinter
