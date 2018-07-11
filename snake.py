@@ -54,11 +54,9 @@ class Gui():
 def main():    
     #init values
     i = 0
-    loop = 0
     maxscore = 0
     total = 0
     maxlength = 0
-    #agent = learningAgents.ApproxQLearningAgent(.05, 0.1, 0.99)
     agent = learningAgents.ApproxQLearningAgent(0, 0.1, 0.99)
     lengths = []
 
@@ -67,13 +65,12 @@ def main():
 
     gui = Gui(800, 800, x, y)
     
-    #while esc not pressed, run game
     while True:
         state = gameState.GameState(None, x, y)
 	nextState = state.generateSuccessor(util.Dirs.RIGHT)
 
         #one full game of snake
-	while loop != 27:
+	while True:
 	    #get optimal action, generate successor state, and update features with the reward
 	    action = agent.getAction(state)
 	    nextState = state.generateSuccessor(action)

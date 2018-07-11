@@ -19,9 +19,7 @@ class FeatureExtractor:
 	    dir_vec = [1, 0]
 	head = util.vectorAdd(state.snake[0], dir_vec)
 
-	features["on-barrier"] = state.board[head[0]][head[1]] > 0 or util.outOfBounds(head, state.walls)
-
-        #performs BFS of 'search_size' # of positions to see if head is surrounded by walls
+        #performs BFS of 'search_size' number of positions to see if head is surrounded by walls
         search_size = min(pow(max(len(state.snake)/4, 1), 2), int((state.walls[0] * state.walls[1] - len(state.snake)) * 0.75))
 	remaining_nodes = search_size
 	oldest_bar = (-1, -1)
@@ -48,17 +46,19 @@ class FeatureExtractor:
 
         len_bin = int(util.sigmoid(len(state.snake)))
 
-        #features["trapped"] = (1 - (remaining_nodes / 2.0 / float(max(search_size, 1)))) if remaining_nodes < search_size else 0
         trapped = remaining_nodes < search_size
 
-	#features["t-old-bar"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if features["trapped"] != 0 else 0
-	features["t-old-bar"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if trapped else 0
+	#Whether or not snake is touching a wall or itself
+	features["on-barrier"] = state.board[head[0]][head[1]] > 0 or util.outOfBounds(head, state.walls)
 
-	#features["dist-food"] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33) if features["trapped"] == 0 else 0
+        #Distance to oldest snake segment; only active if snake is trapped by itself
+	features["dist-oldest"] = 1.0 / pow(util.euclidDist(head, oldest_bar), 2) if trapped else 0
+
+        #Distance to food
 	features["dist-food"] = pow(util.manhattanDist(head, state.food) / float(state.walls[0] + state.walls[1]), .33)
 
-	#features["t-exp-bar"] = oldest_bar_age > remaining_nodes if features["trapped"] != 0 else 0
-	features["t-exp-bar"] = oldest_bar_age > remaining_nodes if trapped else 0
+        #Indicated whether current "trapped" state is escapable under perfect circumstances
+	features["trapped"] = oldest_bar_age > remaining_nodes if trapped else 0
 
 	return features
 
