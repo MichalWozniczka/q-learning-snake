@@ -27,4 +27,5 @@ python snake.py
 # Technologies
 
 Written in Python
+
 GUI created with TKinter
