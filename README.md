@@ -20,6 +20,14 @@ Features are defined in featureExtractor.py.
 
 # How to run
 
+Install required modules using requirements.txt:
+
+```
+pip install -r requirements.txt
+```
+
+Then, to run, use command:
+
 ```
 python snake.py
 ```

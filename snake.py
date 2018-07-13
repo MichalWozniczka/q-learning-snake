@@ -1,6 +1,11 @@
 import gameState, learningAgents, util
-from tkinter import *
-import ImageTk
+
+try:
+    from tkinter import *
+except ImportError:
+    from Tkinter import *
+
+from PIL import ImageTk
 from PIL import Image
 
 class Gui():
