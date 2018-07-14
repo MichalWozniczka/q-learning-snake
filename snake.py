@@ -65,8 +65,8 @@ def main():
     agent = learningAgents.ApproxQLearningAgent(0, 0.1, 0.99)
     lengths = []
 
-    x = 20
-    y = 20
+    x = 25
+    y = 25
 
     gui = Gui(800, 800, x, y)
     

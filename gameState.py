@@ -46,7 +46,7 @@ class GameState:
         #eat food if needed
 	if state.snake[0] == state.food:
 	    state.food = []
-	    state.score += 100
+	    state.score += 10
 	    while state.food == []:
 	        state.food = [random.randint(1, state.walls[0]-2), random.randint(1, state.walls[1]-2)]
 		if state.food in state.snake: 
@@ -59,7 +59,7 @@ class GameState:
 	    state.score -= 1
 
 	if state.isLoss():
-	    state.score -= 500
+	    state.score -= 50000
 
 	return state
 
